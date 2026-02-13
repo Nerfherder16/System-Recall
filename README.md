@@ -42,7 +42,7 @@ A production-ready memory infrastructure that gives Claude Code persistent, sear
 - **Context Injection**: Loads relevant memories at session start
 - **Signal Detection**: Configurable keywords trigger immediate memory storage
 - **Temporal Awareness**: Track when facts were learned AND when they were true
-- **Triple Hybrid Retrieval**: Semantic + keyword + graph traversal (no LLM calls)
+- **Triple Hybrid Retrieval**: Semantic + keyword + graph traversal (no LLM calls at query time)
 - **Multi-User Scoping**: Per-user, per-project, and shared team memories
 - **Self-Hosted**: 100% local, nothing leaves your network
 
@@ -86,7 +86,7 @@ Add to your `.mcp.json`:
       "args": ["-y", "@mem0/mcp-server"],
       "env": {
         "MEM0_API_BASE": "http://localhost:8080",
-        "MEM0_USER_ID": "${DEV_NAME}",
+        "MEM0_USER_ID": "${USER}",
         "MEM0_PROJECT_ID": "your-project"
       }
     }
@@ -98,29 +98,36 @@ Add to your `.mcp.json`:
 
 | Scope | Description | Example |
 |-------|-------------|---------|
-| `user-private` | Individual dev preferences | "Tim prefers explicit error handling" |
-| `project-shared` | Team decisions, architecture | "Using SPL Token-2022 for transfer hooks" |
-| `system` | Infrastructure, deployment | "Neo4j runs on port 7687" |
+| `user-private` | Individual dev preferences | "I prefer explicit error handling" |
+| `project-shared` | Team decisions, architecture | "Using PostgreSQL for the database" |
+| `system` | Infrastructure, deployment | "API runs on port 8080" |
 
 ## Requirements
 
 - Docker & Docker Compose
 - 8GB+ RAM (16GB recommended)
-- LLM endpoint for embeddings (local Ollama or API)
+- LLM endpoint for embeddings (local Ollama or cloud API)
 
-## Deployment
+## Documentation
 
-Designed for Proxmox LXC deployment with:
-- ZFS storage pool for data persistence
-- Sanoid/Syncoid for hourly snapshots
-- Off-box replication to NAS
+- [Architecture](docs/ARCHITECTURE.md) - System design and data flow
+- [Deployment](docs/DEPLOYMENT.md) - Docker, Proxmox LXC, and cloud setup
 
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for full Proxmox setup guide.
+## Why Project Recall?
+
+Most AI memory solutions are either:
+- **Cloud-only**: Your data leaves your network
+- **RAG-only**: Just similarity search, no relationships
+- **No temporal awareness**: Can't answer "what did we know on date X?"
+
+Project Recall combines:
+- **Mem0** for fact extraction and deduplication
+- **Neo4j** for relationship tracking
+- **Qdrant** for semantic search
+- **Graphiti patterns** for temporal awareness
+
+All running locally, all open source, all under your control.
 
 ## License
 
 MIT
-
----
-
-*Built for the AI Dev Server project. Part of Tim's homelab infrastructure.*
