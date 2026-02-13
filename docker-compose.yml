@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # VECTOR STORE - Qdrant
+  # =============================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: recall-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # GRAPH DATABASE - Neo4j
+  # =============================================================================
+  neo4j:
+    image: neo4j:5-community
+    container_name: recall-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - ./config/neo4j/plugins:/plugins
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-recall2024}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=2G
+      - NEO4J_dbms_memory_pagecache_size=1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7474"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # =============================================================================
+  # MEMORY ORCHESTRATION - Mem0
+  # =============================================================================
+  mem0:
+    image: mem0ai/mem0:latest
+    container_name: recall-mem0
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/mem0:/app/config
+    environment:
+      - MEM0_CONFIG_PATH=/app/config/config.yaml
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-recall2024}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434}
+      - LLM_MODEL=${LLM_MODEL:-qwen3:14b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # SESSION ORCHESTRATOR - Custom hooks & signal detection
+  # =============================================================================
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    container_name: recall-orchestrator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config/orchestrator:/app/config
+      - ./logs:/app/logs
+    environment:
+      - MEM0_API_URL=http://mem0:8080
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-recall2024}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:11434}
+      - LLM_MODEL=${LLM_MODEL:-qwen3:14b}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Signal keywords that trigger immediate memory capture
+      - SIGNAL_KEYWORDS=remember,decided,architecture,important,don't forget,note to self
+    depends_on:
+      mem0:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  qdrant_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+
+networks:
+  default:
+    name: recall-network
